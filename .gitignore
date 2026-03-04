@@ -1,6 +1,6 @@
 .venv
 
-results/birth-death/points/*
-!results/birth-death/points/.gitkeep
-results/birth-death/time_series/*
-!results/birth-death/time_series/.gitkeep
+.gitcommit
+
+results/birth-death/*
+!results/birth-death/.gitkeep
