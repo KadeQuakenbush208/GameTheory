@@ -3,6 +3,10 @@ import random
 import math
 import matplotlib.pyplot as plt
 
+### CODE COLLABORATION DETAILS ###
+
+# I collaborated with Joshua Emsley, however I did not copy any of his code. All of this was written by me.
+
 DEBUG = True
 
 # ---------- Functions ----------
@@ -78,7 +82,7 @@ def p_switch(B, A, population_strats, w: float, s: float | int):
 
     return 0.5 + w * (pi_A - pi_B) / (2 * max_pi_diff)
 
-def def_seasonal_birth_factor(wavelength: float = 1.0, min: float = 0.0):
+def def_seasonal_birth_factor(wavelength: float = 1.0, B_min: float = 0.0):
     """Creates a sinusoidal function meant to depict seasonally fluctuating birth rates with a peak in "spring".
 
     The standard model used for this is `B(t) = B_0 + Asin(2πt/Τ + φ)`, where:
@@ -95,8 +99,8 @@ def def_seasonal_birth_factor(wavelength: float = 1.0, min: float = 0.0):
     """
     # Invariants are precomputed
 
-    B_0 = 0.5 + min/2
-    A = 0.5 - min/2
+    B_0 = 0.5 + B_min/2
+    A = 0.5 - B_min/2
     T = wavelength
     phi = 0 # Peaks at t = T/4 => φ = π/2 - 2π/T * T/4 = 0
 
@@ -109,11 +113,11 @@ def def_seasonal_birth_factor(wavelength: float = 1.0, min: float = 0.0):
         Returns:
             float: A value in `[min, 1.0]`.
         """
-        return B_0 + A * math.sin(omega * T + phi)
+        return B_0 + A * math.sin(omega * t + phi)
 
     return seasonal_birth_factor
 
-def def_seasonal_death_factor(wavelength: float = 1.0, min: float = 0.0):
+def def_seasonal_death_factor(wavelength: float = 1.0, D_min: float = 0.0):
     """Creates a sinusoidal function meant to depict seasonally fluctuation death rates with a peak in "winter".
 
     The standard model used for this is `D(t) = D_0 + Asin(2πt/Τ + φ)`, where:
@@ -130,8 +134,8 @@ def def_seasonal_death_factor(wavelength: float = 1.0, min: float = 0.0):
     """
     # Invariants are precomputed
 
-    D_0 = 0.5 + min/2
-    A = 0.5 - min/2
+    D_0 = 0.5 + D_min/2
+    A = 0.5 - D_min/2
     T = wavelength
     phi = math.pi / 2 # Peaks at t = 0 => φ = π/2 - 2π/T * 0 = π/2
 
@@ -154,7 +158,8 @@ def def_seasonal_death_factor(wavelength: float = 1.0, min: float = 0.0):
 # Experiment specification
 
 RUNTIME = 150000 # Number of epochs
-FLUCTUATING_SEASONS = False # Enables/disables variable birth/death rates based on simulated seasons
+FLUCTUATING_SEASONS = True # Enables/disables variable birth/death rates based on simulated seasons
+LIMITED_ENVIRONMENT = True
 
 # Population and runtime specification
 
@@ -164,11 +169,14 @@ init_population_strats = [STRATS[i % len(STRATS)] for i in range(N)] # Initial c
 
 # Selection factors
 
-ws = [0.05, 0.5, 0.95] # Selection strength, 0 <= w <= 1
+ws = [0.01, 0.5, 0.99] # Selection strength, 0 <= w <= 1
 ss = [0.5, 1.0, 2.0] # Cost of losing
 
-cycle_len = RUNTIME // 4 # The length of one seasonal cycle
+cycle_len = RUNTIME // 4 # Length of one seasonal cycle
 min_season_factor = 0.01 # Specifies the minimum value the factor used for simulating seasons can take on
+
+carrying_capacity = N * 2 # Maximum population size before it starts to become unsustainable
+leeway = 0.01 # Dicates how strict the carrying capacity it is, between [0.0, 1.0]
 
 # Graph initialisation
 
@@ -186,10 +194,16 @@ for i in range(plot_count):
 
 # ---------- Evolution ----------
 
+print(f"\nExperiment setup:\n\n - Runtime in epochs: {RUNTIME:,}\n - Initial population: {N:,}\n - Births and deaths {"are independent and seasonally fluctuate" if FLUCTUATING_SEASONS else "only occur simultaneously"}{f"\n - Maximum sustainable population size (with a leeway of {leeway}): {carrying_capacity:,}" if FLUCTUATING_SEASONS and LIMITED_ENVIRONMENT else ""}\n")
+
+# Precompute the functions needed for calculating seasonal fluctuation factors for efficiency, since they are invariant with respect to the current `w` and `s` parameters
+seasonal_birth_factor = def_seasonal_birth_factor(cycle_len, min_season_factor)
+seasonal_death_factor = def_seasonal_death_factor(cycle_len, min_season_factor)
+
 for w_i in range(len(ws)):
     for s_i in range(len(ss)):
         w, s = ws[w_i], ss[s_i]
-        print(f"Running setup {w_i*len(ws) + s_i + 1}/{len(ws)*len(ss)} (w = {w}, s = {s}) with a{" seasonally fluctuating" if FLUCTUATING_SEASONS else "n initial"} population of {N:,} for {RUNTIME:,} epochs...")
+        print(f"Running setup {w_i*len(ws) + s_i + 1}/{len(ws)*len(ss)} (w = {w}, s = {s})...")
         population_strats = init_population_strats[:]
 
         results = { # Index is time
@@ -202,14 +216,12 @@ for w_i in range(len(ws)):
             "P": [] # Proportion of agents playing P with respect to R + P
         }
 
-        # Precompute the functions needed for calculating seasonal fluctuation factors for efficiency, since they are invariant with respect to the current `w` and `s` parameters
-        seasonal_birth_factor = def_seasonal_birth_factor(cycle_len, min_season_factor)
-        seasonal_death_factor = def_seasonal_death_factor(cycle_len, min_season_factor)
-
         for i in range(RUNTIME):
             A = population_strats.pop(random.randint(0, len(population_strats)) - 1) # Popped to prevent selection of the same agent for B
             B = population_strats[random.randint(0, len(population_strats)) - 1]
             population_strats.append(A)
+
+            population_density = len(population_strats) / carrying_capacity # Measures how crowded the current population is - when > 1.0, birth becomes much less likely and death becomes much more likely
 
             # Strategy comparison
 
@@ -218,10 +230,12 @@ for w_i in range(len(ws)):
 
                 if FLUCTUATING_SEASONS:
                     # Births are considered independent of deaths, so they are assessed separately
-                    if p * seasonal_birth_factor(i) > random.random():
-                        population_strats.append(A) # Replication of strategy A
-                    if p * seasonal_death_factor(i) > random.random():
-                        population_strats.remove(B) # Death of a strategy B
+                    if LIMITED_ENVIRONMENT:
+                        if p * seasonal_birth_factor(i) * max(leeway, (1.0 - population_density)) > random.random(): population_strats.append(A) # Replication of strategy A
+                        if p * seasonal_death_factor(i) * min(1 - leeway, population_density) > random.random(): population_strats.remove(B) # Death of a strategy B
+                    else:
+                        if p * seasonal_birth_factor(i) > random.random(): population_strats.append(A) # Replication of strategy A
+                        if p * seasonal_death_factor(i) > random.random(): population_strats.remove(B) # Death of a strategy B
                 else:
                     if p > random.random():
                         population_strats.append(A) # Replication of strategy A
@@ -288,24 +302,43 @@ for w_i in range(len(ws)):
         if s_i == 0: # Only label if it is the leftmost column
             axs[1][w_i, s_i].set_ylabel(f"w = {w:.2f}")
 
+print()
+
 # ---------- Plot labelling and saving ----------
 
 if FLUCTUATING_SEASONS:
-    fig[0].supxlabel("Time (epochs)")
-    fig[0].supylabel("Number of Agents")  
-    fig[0].suptitle("Evolution of Rock-Paper-Scissors Strategies Over Time\nwith Seasonally Fluctuating Birth and Death Rates", y=0.975, fontsize=20)
+    if LIMITED_ENVIRONMENT:
+        fig[0].supxlabel("Time (epochs)")
+        fig[0].supylabel("Number of Agents")  
+        fig[0].suptitle(f"Evolution of Rock-Paper-Scissors Strategies Over Time\nwith Seasonal Fluctuations and Crowding\n(Carrying Capacity of {carrying_capacity})", y=0.99, fontsize=19)
 
-    fig[1].supxlabel("Number of Agents Playing R")
-    fig[1].supylabel("Number of Agents Playing P")
-    fig[1].suptitle(f"Phase Plane of Evolution of Rock-Paper-Scissors Strategies\nwith Seasonally Fluctuating Birth and Death Rates", y=0.975, fontsize=20)
+        fig[1].supxlabel("Number of Agents Playing R")
+        fig[1].supylabel("Number of Agents Playing P")
+        fig[1].suptitle(f"Phase Plane of Evolution of Rock-Paper-Scissors Strategies\nwith Seasonal Fluctuations and Crowding\n(Carrying Capacity of {carrying_capacity}", y=0.99, fontsize=19)
 
-    fig[2].supxlabel("Time (epochs)")
-    fig[2].supylabel("Proportion of Agents")  
-    fig[2].suptitle("Evolution of Rock-Paper-Scissors Strategies Over Time with\nSeasonally Fluctuating Birth and Death Rates (Normalised)", y=0.975, fontsize=19)
+        fig[2].supxlabel("Time (epochs)")
+        fig[2].supylabel("Proportion of Agents")  
+        fig[2].suptitle(f"Evolution of Rock-Paper-Scissors Strategies Over Time with\nSeasonal Fluctuations and Crowding (Normalised)\n(Carrying Capacity of {carrying_capacity}", y=0.99, fontsize=19)
 
-    fig[0].savefig(f"results\\seasonally_fluctuating\\time_series.jpg")
-    fig[1].savefig(f"results\\seasonally_fluctuating\\phase_plane.jpg")
-    fig[2].savefig(f"results\\seasonally_fluctuating\\time_series-normalised.jpg")
+        fig[0].savefig(f"results\\seasons_and_crowding\\time_series.jpg")
+        fig[1].savefig(f"results\\seasons_and_crowding\\phase_plane.jpg")
+        fig[2].savefig(f"results\\seasons_and_crowding\\time_series-normalised.jpg")
+    else:
+        fig[0].supxlabel("Time (epochs)")
+        fig[0].supylabel("Number of Agents")  
+        fig[0].suptitle("Evolution of Rock-Paper-Scissors Strategies Over Time\nwith Seasonal Fluctuations", y=0.975, fontsize=20)
+
+        fig[1].supxlabel("Number of Agents Playing R")
+        fig[1].supylabel("Number of Agents Playing P")
+        fig[1].suptitle(f"Phase Plane of Evolution of Rock-Paper-Scissors Strategies\nwith Seasonal Fluctuations", y=0.975, fontsize=20)
+
+        fig[2].supxlabel("Time (epochs)")
+        fig[2].supylabel("Proportion of Agents")  
+        fig[2].suptitle("Evolution of Rock-Paper-Scissors Strategies Over Time with\nSeasonal Fluctuations (Normalised)", y=0.975, fontsize=20)
+
+        fig[0].savefig(f"results\\seasons\\time_series.jpg")
+        fig[1].savefig(f"results\\seasons\\phase_plane.jpg")
+        fig[2].savefig(f"results\\seasons\\time_series-normalised.jpg")
 else:
     fig[0].supxlabel("Time (epochs)")
     fig[0].supylabel("Number of Agents")
@@ -313,7 +346,7 @@ else:
 
     fig[1].supxlabel("Number of Agents Playing R")
     fig[1].supylabel("Number of Agents Playing P")
-    fig[1].suptitle(f"Phase Plane of Evolution of Rock-Paper-Scissors Strategies\nwith Fixed Population Size", y=0.975, fontsize=20)
+    fig[1].suptitle(f"Phase Plane of Evolution of Rock-Paper-Scissors Strategies\nwith a Fixed Population Size", y=0.975, fontsize=20)
 
     fig[0].savefig(f"results\\fixed\\time_series.jpg")
     fig[1].savefig(f"results\\fixed\\phase_plane.jpg")

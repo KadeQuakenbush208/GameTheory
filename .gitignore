@@ -4,5 +4,7 @@
 
 results/fixed/*
 !results/fixed/.gitkeep
-results/seasonally_fluctuating/*
-!results/seasonally_fluctuating/.gitkeep
+results/seasons/*
+!results/seasons/.gitkeep
+results/seasons_and_crowding/*
+!results/seasons_and_crowding/.gitkeep
