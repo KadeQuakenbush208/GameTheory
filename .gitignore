@@ -2,5 +2,7 @@
 
 .gitcommit
 
-results/birth-death/*
-!results/birth-death/.gitkeep
+results/fixed/*
+!results/fixed/.gitkeep
+results/seasonally_fluctuating/*
+!results/seasonally_fluctuating/.gitkeep
